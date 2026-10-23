@@ -1,0 +1,5 @@
+pytest-playwright>=0.5
+pytest-bdd>=8.1
+pytest-xdist>=3.6
+cryptography>=42
+python-dotenv>=1.0
