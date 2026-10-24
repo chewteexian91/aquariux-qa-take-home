@@ -18,12 +18,12 @@ Feature: Login
     Then I should see the invalid credentials error
     And I should remain on the login page
 
-  Scenario Outline: Log in button is disabled until both fields are filled
+  Scenario Outline: Log in button is disabled with <empty> empty
     When I enter account ID "<account_id>" and password "<password>"
     Then the log in button should be disabled
 
     Examples:
-      | account_id | password |
-      |            |          |
-      | 123456     |          |
-      |            | secret   |
+      | empty          | account_id | password |
+      | both fields    |            |          |
+      | the password   | 123456     |          |
+      | the account ID |            | secret   |
