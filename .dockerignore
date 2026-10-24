@@ -1,0 +1,18 @@
+# Secrets: the key is passed in when the container runs.
+.env
+.env.*
+!.env.example
+
+# Not needed to run the tests.
+.git
+.github
+.idea
+.vscode
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+allure-results
+allure-report
+test-results
