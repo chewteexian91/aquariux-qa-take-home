@@ -1,0 +1,52 @@
+# Smoke tests: one scenario per feature (tagged @smoke), run in the project's Docker image against
+# the live demo site. Needs the repository secret AQX_ENCRYPTION_KEY (the key from .env).
+name: Smoke tests
+
+on:
+  push:
+    branches: [master, development]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# Every run trades on the same shared demo account, and a run starts by closing every position on
+# it. Runs wait for each other instead of overlapping.
+concurrency:
+  group: demo-account
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: aqx-tests
+          # Rebuilds only when requirements.txt or the code changes.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run the smoke tests
+        env:
+          AQX_ENCRYPTION_KEY: ${{ secrets.AQX_ENCRYPTION_KEY }}
+        run: >-
+          docker run --rm -e AQX_ENCRYPTION_KEY
+          -v "$PWD/allure-results:/app/allure-results"
+          aqx-tests -m smoke -rs
+
+      # Download it from the run's page, then: npx allure@3.20.1 generate allure-results
+      - name: Keep the Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+          if-no-files-found: ignore
