@@ -6,7 +6,7 @@ Feature: Open positions
 
   # Positions are opened through the API before logging in; the scenarios check the table and dialogs.
   # UKOIL: minimum 0.1 lot, steps of 0.1. Stop Loss / Take Profit sit far from the market.
-  # Failed requests are faked in the browser: they never reach the server. A "400 answer" carries
+  # Failed requests are mocked in the browser: they never reach the server. A "400 answer" carries
   # the message "Rejected for this test." in the API's error format.
 
   Background:
@@ -146,7 +146,7 @@ Feature: Open positions
   Scenario Outline: Changing the Stop Loss and Take Profit fails with a <failure>
     Given I have a "Buy" position of "0.1" lots on "UKOIL" with a Stop Loss and Take Profit
     And I am logged in as the "normal" user
-    And the "modify position" request will fail with a "<failure>"
+    And the "modify position" request is mocked to fail with a "<failure>"
     When I change my position's Stop Loss and Take Profit
     And I confirm the change
     Then I should see the message "<banner>"
@@ -161,7 +161,7 @@ Feature: Open positions
   Scenario Outline: Closing a position fails with a <failure>
     Given I have a "Buy" position of "0.2" lots on "UKOIL"
     And I am logged in as the "normal" user
-    And the "close position" request will fail with a "<failure>"
+    And the "close position" request is mocked to fail with a "<failure>"
     When I close "0.1" lots of my position
     Then I should see the message "<banner>"
     And my position should still be listed with "0.2" lots

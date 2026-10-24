@@ -7,7 +7,7 @@ Feature: Trading history and notifications
   # Positions and orders are opened, closed and deleted through the API before logging in.
   # Notifications are only sent for positions (created / closed), not for pending orders.
   # History lists show 30 rows per page, newest first, for the last 30 days by default.
-  # Failed requests are faked in the browser: they never reach the server.
+  # Failed requests are mocked in the browser: they never reach the server.
   # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
   # Steps to reproduce each defect by hand: docs/defects.md.
 
@@ -76,26 +76,26 @@ Feature: Trading history and notifications
   # error, so a trader is told they have no history. The right wording isn't
   # known, so any error message passes.
 
-  @defect
+  @defect @any_market
   Scenario: A failed Orders & Deals load is reported as an error
     Given I am logged in as the "normal" user
-    And the "orders and deals" request will fail with a "500 answer"
+    And the "orders and deals" request is mocked to fail with a "500 answer"
     When I open Orders & Deals
     Then I should see an error message
     And Orders & Deals should not say there is no history
 
-  @defect
+  @defect @any_market
   Scenario: A failed Positions History load is reported as an error
     Given I am logged in as the "normal" user
-    And the "positions history" request will fail with a "network error"
+    And the "positions history" request is mocked to fail with a "network error"
     When I open Positions History
     Then I should see an error message
     And Positions History should not say there is no history
 
-  @defect
+  @defect @any_market
   Scenario: A failed notifications load is reported as an error
     Given I am logged in as the "normal" user
-    And the "notifications" request will fail with a "500 answer"
+    And the "notifications" request is mocked to fail with a "500 answer"
     When I open the notifications
     Then I should see an error message
     And the notifications should not say there are none

@@ -37,7 +37,8 @@ Then:
 
 | Command | What it runs |
 |---|---|
-| `pytest` | everything |
+| `pytest` | everything, whether the markets are open or not (see [Results](#reading-the-results)) |
+| `pytest -m "$(python -m src.datas.market_hours)"` | only what can run at this time of the week, as GitHub does |
 | `pytest -n 4 --dist loadgroup` | everything, 4 tests at a time (scenarios that trade still run one at a time) |
 | `pytest -m smoke` | one scenario per feature: its main flow |
 | `pytest -m login` | one feature. The other features are `market_order`, `one_click`, `pending_order`, `open_positions`, `bulk_actions`, `trading_history`, `trade_records` and `market_closed` |
@@ -90,8 +91,8 @@ Rebuild the image after changing the code: the code is copied in when the image 
 
 ## Run on GitHub Actions
 
-`.github/workflows/smoke.yml` runs the smoke tests (`pytest -m smoke`) in the Docker image. It
-runs:
+`.github/workflows/smoke.yml` runs the smoke tests (`pytest -m smoke`) in the Docker image, only
+those that can run at that time of the week (see [Results](#reading-the-results)). It runs:
 
 - on every push to `master` or `development`
 - on every pull request to `master`
@@ -108,8 +109,8 @@ Without it, every test that logs in fails with `AQX_ENCRYPTION_KEY is missing`.
 
 ### Results
 
-The run's log lists each test, with the reason for any skip. Two downloads are saved with the run,
-under Artifacts on its page:
+The run's log shows which market tags it picked, then lists each test, with the reason for any
+skip. Two downloads are saved with the run, under Artifacts on its page:
 
 - `allure-report`: the HTML report. Unzip it and open `index.html` in a browser.
 - `allure-results`: the raw results, if you want to rebuild the report.
@@ -125,11 +126,19 @@ Or from the command line: `gh run download <run-id> -n allure-report`
 
 ## Reading the results
 
-- **Skipped while the market is closed.** Scenarios that place orders need the symbol's market
-  open, so they check the server's live market status first and skip while it's closed. A run at
-  the weekend skips most trading scenarios. The skip reason says so, for example
-  `UKOIL market is closed: no order can be placed`. UKOIL's trading hours are in `docs/api-notes.md`.
-  The `market_closed` scenarios are the exception: they test the closed market and run at any time.
+- **Chosen by market hours.** Most scenarios need the symbol's market open. The symbols' published
+  trading hours are in `src/datas/market_hours.py`, and `python -m src.datas.market_hours` prints
+  which tags can run now:
+  - markets open: `not closed_market`, everything except the one scenario that needs a closed market
+  - markets closed (the weekend): `any_market or closed_market`, the 18 scenarios that don't trade
+    or that test the closed market
+  - a market opens or closes in the next 30 minutes, or one is open and another closed (for
+    example UKOIL's breaks): `any_market` only
+
+  GitHub runs the smoke tests with that expression. The tests never ask the site whether a market
+  is open. If the site says closed during the published hours, the scenarios fail with
+  `UKOIL shows "Market Closed" during its trading hours` or `Symbol market is closed.`. That's what a
+  holiday looks like too.
 - **Expected failures (`@defect`).** Some scenarios check what the site should do but doesn't yet.
   They're marked as expected to fail ("xfailed") until the site is fixed. If one starts passing,
   the run fails, so the tag can be removed. In the Allure report they show as Skipped.

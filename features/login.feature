@@ -1,4 +1,4 @@
-@login
+@login @any_market
 Feature: Login
   As a demo account holder
   I want to log in to AQX Trader

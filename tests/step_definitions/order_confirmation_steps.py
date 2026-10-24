@@ -47,17 +47,21 @@ def confirm_order(trade_page: TradePage, order: Order, open_orders: list[Order])
 
 
 @when("I try to confirm the order")
-def try_to_confirm(trade_page: TradePage):
-    send_and_finish(trade_page.page, is_new_order, trade_page.order_confirmation.confirm)
+def try_to_confirm(trade_page: TradePage, order: Order, open_orders: list[Order]):
+    """Confirm an order the site should turn down."""
+    answer = send_and_finish(trade_page.page, is_new_order, trade_page.order_confirmation.confirm)
+    if answer is not None and answer.ok:
+        # Placed after all: the scenario fails, and teardown closes or deletes the order.
+        record_placed_order(answer, order, open_orders)
 
 
-@when(parsers.parse('I confirm the order and the server answers {status:d} with "{message}"'))
-def confirm_into_error_answer(trade_page: TradePage, status: int, message: str):
+@when(parsers.parse('I confirm the order, with its request mocked to answer {status:d} with "{message}"'))
+def confirm_into_mocked_answer(trade_page: TradePage, status: int, message: str):
     _confirm_into(trade_page, answer_with(status, message))
 
 
-@when(parsers.parse('I confirm the order and the request fails with a "{kind}"'))
-def confirm_into_failure(trade_page: TradePage, kind: str):
+@when(parsers.parse('I confirm the order, with its request mocked to fail with a "{kind}"'))
+def confirm_into_mocked_failure(trade_page: TradePage, kind: str):
     _confirm_into(trade_page, failure(kind))
 
 

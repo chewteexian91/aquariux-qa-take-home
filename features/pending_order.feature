@@ -9,7 +9,7 @@ Feature: Pending orders
   # Prices are set relative to the market ("-20%" = 20% below the side's market price), far enough
   # that the orders never fill while a test runs. Orders to change or delete are placed through the
   # API first; placing itself is checked through the UI.
-  # Failed requests are faked in the browser: they never reach the server. A "400 answer" carries
+  # Failed requests are mocked in the browser: they never reach the server. A "400 answer" carries
   # the message "Rejected for this test." in the API's error format.
   # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
   # Steps to reproduce each defect by hand: docs/defects.md.
@@ -254,7 +254,7 @@ Feature: Pending orders
   Scenario Outline: Placing a pending order that fails with a <failure> shows "<banner>"
     Given I am logged in as the "normal" user
     And "UKOIL" is open for trading
-    And the "place pending order" request will fail with a "<failure>"
+    And the "place pending order" request is mocked to fail with a "<failure>"
     When I fill in a "Buy" "Limit" order for "0.1" lots priced "-20%" from the market
     And I place the order
     And I try to confirm the order
@@ -270,7 +270,7 @@ Feature: Pending orders
   Scenario Outline: Changing a pending order that fails with a <failure> keeps it as it was
     Given I have a "Buy" "Limit" order of "0.1" lots on "UKOIL"
     And I am logged in as the "normal" user
-    And the "modify pending order" request will fail with a "<failure>"
+    And the "modify pending order" request is mocked to fail with a "<failure>"
     When I open Pending Orders
     And I change my order's price to "79.000"
     And I confirm the change
@@ -286,7 +286,7 @@ Feature: Pending orders
   Scenario Outline: Deleting a pending order that fails with a <failure> keeps it
     Given I have a "Buy" "Limit" order of "0.1" lots on "UKOIL"
     And I am logged in as the "normal" user
-    And the "delete pending order" request will fail with a "<failure>"
+    And the "delete pending order" request is mocked to fail with a "<failure>"
     When I start deleting my order
     And I confirm the deletion
     Then I should see the message "<banner>"

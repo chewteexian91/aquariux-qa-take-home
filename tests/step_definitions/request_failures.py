@@ -1,7 +1,7 @@
-"""Make the site's requests fail in the browser, for the "server answers non-2xx" scenarios.
+"""Mock the site's requests failing in the browser, for the failed-request scenarios.
 
-Not a step file: it holds no steps, so it isn't registered in `pytest_plugins`. Nothing faked here
-reaches the server.
+Not a step file: it holds no steps, so it isn't registered in `pytest_plugins`. Nothing mocked
+here reaches the server.
 """
 from urllib.parse import urlparse
 
@@ -26,7 +26,7 @@ REQUESTS = {
     "notifications": ("GET", NOTIFICATIONS),
 }
 
-# The message a faked "400 answer" carries, in the API's error format.
+# The message a mocked "400 answer" carries, in the API's error format.
 REJECTED_MESSAGE = "Rejected for this test."
 
 # Ways for a request to fail: an error answer in the API's format, or no answer from the API.

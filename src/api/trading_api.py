@@ -82,14 +82,6 @@ class TradingApi:
             response = self.request.fetch(path, method=method, **kwargs)
         return response
 
-    # --- Market ---
-
-    def market_is_open(self, symbol: str) -> bool:
-        """Whether the symbol can be traded right now. The server's own answer, so it covers
-        weekends, daily breaks and holidays without a timetable (docs/api-notes.md)."""
-        path = f"{SYMBOL_DETAIL}?symbol={symbol}"
-        return _result(self._send("GET", path), SYMBOL_DETAIL)["status"] == MARKET_OPEN
-
     # --- Positions ---
 
     def open_market_order(self, symbol: str, side: str, volume: str,

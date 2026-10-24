@@ -34,15 +34,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Which scenarios can run now, from the symbols' published trading hours, not the site's own
+      # market status (src/datas/market_hours.py). Prints a -m expression, e.g. "not closed_market".
+      - name: Pick the scenarios for the market hours
+        id: market
+        run: |
+          marker=$(docker run --rm --entrypoint python aqx-tests -m src.datas.market_hours)
+          echo "Market tags: $marker"
+          echo "marker=$marker" >> "$GITHUB_OUTPUT"
+
       # CI (set by GitHub) makes checks wait longer: the site is slow from GitHub's US runners
       # (tests/conftest.py).
       - name: Run the smoke tests
         env:
           AQX_ENCRYPTION_KEY: ${{ secrets.AQX_ENCRYPTION_KEY }}
+          MARKET_TAGS: ${{ steps.market.outputs.marker }}
         run: >-
           docker run --rm -e AQX_ENCRYPTION_KEY -e CI
           -v "$PWD/allure-results:/app/allure-results"
-          aqx-tests -m smoke -rs
+          aqx-tests -m "smoke and ($MARKET_TAGS)" -rs
 
       - uses: actions/setup-node@v7
         if: always()

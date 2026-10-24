@@ -11,7 +11,7 @@ Feature: Bulk close and bulk delete
   # Bulk actions hit every order on the account, not just the scenario's, so each scenario first
   # checks the account holds nothing else, and skips if it does.
   # Orders are created through the API before logging in.
-  # Failed requests are faked in the browser: they never reach the server.
+  # Failed requests are mocked in the browser: they never reach the server.
   # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
   # Steps to reproduce each defect by hand: docs/defects.md.
 
@@ -92,7 +92,7 @@ Feature: Bulk close and bulk delete
     Given I have a "Buy" position of "0.1" lots on "UKOIL"
     And I have a "Sell" position of "0.1" lots on "UKOIL"
     And I am logged in as the "normal" user
-    And the "bulk close" request will fail with a "<failure>"
+    And the "bulk close" request is mocked to fail with a "<failure>"
     When I bulk close "All Positions"
     And I confirm the bulk action
     Then I should see the message "Order action failed"
@@ -166,7 +166,7 @@ Feature: Bulk close and bulk delete
     Given I have a "Buy" "Limit" order of "0.1" lots on "UKOIL"
     And I have a "Sell" "Stop" order of "0.1" lots on "UKOIL"
     And I am logged in as the "normal" user
-    And the "bulk delete" request will fail with a "<failure>"
+    And the "bulk delete" request is mocked to fail with a "<failure>"
     When I bulk delete "All Orders"
     And I confirm the bulk action
     Then I should see the message "Order action failed"

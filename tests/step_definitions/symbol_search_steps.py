@@ -1,21 +1,20 @@
 """Steps for the symbol search bar, used to open a symbol, and for the symbol's market being open or closed."""
 from urllib.parse import parse_qs, urlparse
 
-import pytest
 from playwright.sync_api import Page, Route, expect
 from pytest_bdd import given, parsers
 
-from src.api.trading_api import MARKET_CLOSED, MARKET_OPEN, SYMBOL_DETAIL, TradingApi
+from src.api.trading_api import MARKET_CLOSED, MARKET_OPEN, SYMBOL_DETAIL
 from src.pages.components.order_panel import MARKET_CLOSED_MSG
 from src.pages.trade_page import TradePage
 
 
 @given(parsers.parse('"{symbol}" is open for trading'))
 def symbol_is_open(trade_page: TradePage, symbol: str):
+    # These scenarios run only during the symbol's published hours (src/datas/market_hours.py).
     _open_symbol(trade_page, symbol)
-    # Outside the symbol's trading hours (e.g. at the weekend) no order can be placed.
-    if trade_page.order_panel.market_closed.count():
-        pytest.skip(f'{symbol} market is closed: the order panel shows "{MARKET_CLOSED_MSG}"')
+    expect(trade_page.order_panel.market_closed,
+           f'{symbol} shows "{MARKET_CLOSED_MSG}" during its trading hours').to_have_count(0)
 
 
 @given(parsers.parse('I open "{symbol}"'))
@@ -24,18 +23,17 @@ def open_symbol(trade_page: TradePage, symbol: str):
     _open_symbol(trade_page, symbol)
 
 
-@given(parsers.parse('the "{symbol}" market is closed'))
-def market_closed(trade_page: TradePage, symbol: str):
-    # Faked in the browser, so the scenario runs at any time. Set before the symbol opens.
-    _fake_market_status(trade_page.page, symbol, MARKET_CLOSED)
+@given(parsers.parse('the "{symbol}" market is mocked as closed'))
+def market_mocked_closed(trade_page: TradePage, symbol: str):
+    # Mocked in the browser, so the scenario runs at any time. Set before the symbol opens.
+    _mock_market_status(trade_page.page, symbol, MARKET_CLOSED)
 
 
-@given(parsers.parse('the "{symbol}" market has closed, but my page still shows it open'))
-def market_closed_behind_page(trade_page: TradePage, trading_api: TradingApi, symbol: str):
-    # The order has to reach the server while the market is really closed.
-    if trading_api.market_is_open(symbol):
-        pytest.skip(f"{symbol} market is open: this scenario needs it closed")
-    _fake_market_status(trade_page.page, symbol, MARKET_OPEN)
+@given(parsers.parse('the "{symbol}" market is closed, but mocked as open on my page'))
+def market_mocked_open(trade_page: TradePage, symbol: str):
+    # The order has to reach the server while the market is really closed: the scenario is
+    # tagged @closed_market, so it runs only outside the published hours.
+    _mock_market_status(trade_page.page, symbol, MARKET_OPEN)
 
 
 def _open_symbol(trade_page: TradePage, symbol: str):
@@ -44,7 +42,7 @@ def _open_symbol(trade_page: TradePage, symbol: str):
     expect(trade_page.order_panel.panel_loading).to_have_count(0)
 
 
-def _fake_market_status(page: Page, symbol: str, status: str):
+def _mock_market_status(page: Page, symbol: str, status: str):
     """Make the page see the symbol's market as open or closed. The server isn't told: orders still go to it.
 
     The order panel takes the market's state from the symbol's details, read once when the symbol

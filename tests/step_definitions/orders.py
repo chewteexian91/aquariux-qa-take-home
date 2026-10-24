@@ -6,7 +6,6 @@ import re
 from datetime import date, datetime
 from urllib.parse import urlparse
 
-import pytest
 from playwright.sync_api import Request, Response, expect
 
 from src.api.trading_api import MARKET_ORDER, PENDING_ORDER, TradingApi, placed_order_no
@@ -30,12 +29,14 @@ def let_tables_update(page):
     page.wait_for_timeout(TABLE_UPDATE_MS)
 
 
-def send_and_finish(page, is_request, action):
+def send_and_finish(page, is_request, action) -> Response | None:
     """Do `action`, which sends a request, and wait until that request has finished: answered, or
-    failed (a faked network error). Later checks then see what the site did with the answer."""
+    failed (a mocked network error). Later checks then see what the site did with the answer.
+
+    Returns the answer, or None when the request failed without one."""
     with page.expect_request(is_request) as sent:
         action()
-    sent.value.response()  # None when the request failed without an answer
+    return sent.value.response()
 
 
 def record_placed_order(response: Response, order: Order, open_orders: list[Order]):
@@ -48,17 +49,9 @@ def record_placed_order(response: Response, order: Order, open_orders: list[Orde
     open_orders.append(order)  # removed again in teardown, pass or fail
 
 
-def skip_if_market_closed(trading_api: TradingApi, symbol: str):
-    """Outside the symbol's trading hours the server turns every new order down, so a scenario
-    that needs one can't run."""
-    if not trading_api.market_is_open(symbol):
-        pytest.skip(f"{symbol} market is closed: no order can be placed")
-
-
 def open_position(trading_api: TradingApi, open_orders: list[Order], symbol: str, side: str, volume: str,
                   stop_loss: str | None = None, take_profit: str | None = None) -> Order:
     """Open a position through the API and register it for cleanup."""
-    skip_if_market_closed(trading_api, symbol)
     order = trading_api.open_market_order(symbol, side, volume, stop_loss, take_profit)
     open_orders.append(order)  # closed again in teardown, pass or fail
     order.entry_price = price_text(symbol, trading_api.position(order.order_id)["openPrice"])
@@ -68,7 +61,6 @@ def open_position(trading_api: TradingApi, open_orders: list[Order], symbol: str
 def place_pending(trading_api: TradingApi, open_orders: list[Order], symbol: str, side: str, order_type: str,
                   volume: str, **expiry) -> Order:
     """Place a pending order through the API, far from the market, and register it for cleanup."""
-    skip_if_market_closed(trading_api, symbol)
     price, stop_limit_price = PENDING_PRICES[symbol][(side, order_type)]
     order = trading_api.place_pending_order(symbol, side, order_type, volume, price, stop_limit_price, **expiry)
     open_orders.append(order)  # deleted again in teardown, pass or fail

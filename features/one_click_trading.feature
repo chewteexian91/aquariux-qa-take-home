@@ -6,7 +6,7 @@ Feature: Market orders with one-click trading
 
   # One-click trading is saved on the server for the whole account. Scenarios that switch it on
   # switch it back off afterwards.
-  # Failed requests are faked in the browser: they never reach the server. A "400 answer" carries
+  # Failed requests are mocked in the browser: they never reach the server. A "400 answer" carries
   # the message "Rejected for this test." in the API's error format.
   # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
   # Steps to reproduce each defect by hand: docs/defects.md.
@@ -16,6 +16,7 @@ Feature: Market orders with one-click trading
 
   # --- Switching it on and off ---
 
+  @any_market
   Scenario: Turn on one-click trading
     Given I am logged in as the "normal" user
     When I turn on one-click trading
@@ -23,6 +24,7 @@ Feature: Market orders with one-click trading
     Then I should see the message "One-Click Trading activated."
     And one-click trading should be on
 
+  @any_market
   Scenario: Declining the terms leaves one-click trading off
     Given I am logged in as the "normal" user
     When I turn on one-click trading
@@ -115,7 +117,7 @@ Feature: Market orders with one-click trading
     Given one-click trading is on
     And I am logged in as the "normal" user
     And "UKOIL" is open for trading
-    And the "place market order" request will fail with a "<failure>"
+    And the "place market order" request is mocked to fail with a "<failure>"
     When I open the One-Click tab
     And I enter "0.1" lots on the One-Click tab
     And I try to buy with one click
@@ -129,20 +131,20 @@ Feature: Market orders with one-click trading
       | timeout       | Network error. Please try again later.                 |
 
   # Defect #12: if saving the setting fails, the switch stays as it was and nothing tells the user. The right wording isn't known, so any error message passes.
-  @defect
+  @defect @any_market
   Scenario: Turning on one-click trading tells me when it fails
     Given I am logged in as the "normal" user
-    And the "one-click setting" request will fail with a "500 answer"
+    And the "one-click setting" request is mocked to fail with a "500 answer"
     When I turn on one-click trading
     And I agree to the one-click trading terms
     Then I should see an error message
     And one-click trading should be off
 
-  @defect
+  @defect @any_market
   Scenario: Turning off one-click trading tells me when it fails
     Given one-click trading is on
     And I am logged in as the "normal" user
-    And the "one-click setting" request will fail with a "500 answer"
+    And the "one-click setting" request is mocked to fail with a "500 answer"
     When I turn off one-click trading
     Then I should see an error message
     And one-click trading should be on

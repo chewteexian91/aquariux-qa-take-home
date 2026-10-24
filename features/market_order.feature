@@ -7,7 +7,7 @@ Feature: Market orders with Stop Loss and Take Profit
   # UKOIL (Commodities) offers Fill or Kill and Immediate or Cancel. EURUSD (Forex) only Fill or Kill.
   # "from the market" = on the correct side: a Buy has its Stop Loss below and Take Profit above
   # the price, a Sell the reverse. They sit 20-30% away so they never trigger while a test runs.
-  # Failed order requests are faked in the browser: they never reach the server.
+  # Failed order requests are mocked in the browser: they never reach the server.
   # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
   # Steps to reproduce each defect by hand: docs/defects.md.
 
@@ -215,7 +215,7 @@ Feature: Market orders with Stop Loss and Take Profit
     Given "UKOIL" is open for trading
     When I fill in a "Buy" market order for "0.1" lots with "Fill or Kill"
     And I place the order
-    And I confirm the order and the server answers <status> with "<message>"
+    And I confirm the order, with its request mocked to answer <status> with "<message>"
     Then I should see the message "<banner>"
 
     Examples:
@@ -228,7 +228,7 @@ Feature: Market orders with Stop Loss and Take Profit
     Given "UKOIL" is open for trading
     When I fill in a "Buy" market order for "0.1" lots with "Fill or Kill"
     And I place the order
-    And I confirm the order and the request fails with a "<failure>"
+    And I confirm the order, with its request mocked to fail with a "<failure>"
     Then I should see the message "<banner>"
 
     Examples:
@@ -244,7 +244,7 @@ Feature: Market orders with Stop Loss and Take Profit
     Given "UKOIL" is open for trading
     When I fill in a "Buy" market order for "0.1" lots with "Fill or Kill"
     And I place the order
-    And I confirm the order and the request fails with a "<failure>"
+    And I confirm the order, with its request mocked to fail with a "<failure>"
     Then I should see the message "<banner>"
 
     Examples:
