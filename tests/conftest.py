@@ -1,3 +1,4 @@
+import os
 import re
 from urllib.parse import urlparse
 
@@ -38,6 +39,15 @@ TRADING_GROUP = "demo_account"
 # Scenario tag for a site defect: the scenario checks the right behaviour, so it fails until the
 # site is fixed. The comment above the scenario says what's wrong; docs/defects.md has the details.
 DEFECT_TAG = "defect"
+# How long a check waits on GitHub (the CI variable is set) instead of expect's default 5 s. The
+# runners are in the US, and each request to the site takes 10-20 times longer than from Asia:
+# after login, the trade page took up to 5 s to show its first symbol there.
+CI_EXPECT_TIMEOUT_MS = 15_000
+
+
+def pytest_configure(config):
+    if os.getenv("CI"):
+        expect.set_options(timeout=CI_EXPECT_TIMEOUT_MS)
 
 
 def pytest_bdd_apply_tag(tag: str, function):

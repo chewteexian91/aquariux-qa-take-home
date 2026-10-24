@@ -108,15 +108,20 @@ Without it, every test that logs in fails with `AQX_ENCRYPTION_KEY is missing`.
 
 ### Results
 
-The run's log lists each test, with the reason for any skip. The Allure results are saved with the
-run as the artifact `allure-results`. To build the report from them:
+The run's log lists each test, with the reason for any skip. Two downloads are saved with the run,
+under Artifacts on its page:
 
-```bash
-gh run download <run-id> -n allure-results -D allure-results
-npx allure@3.20.1 generate allure-results
-```
+- `allure-report`: the HTML report. Unzip it and open `index.html` in a browser.
+- `allure-results`: the raw results, if you want to rebuild the report.
 
-Runs wait for each other rather than overlapping, because they all trade on the same demo account.
+Or from the command line: `gh run download <run-id> -n allure-report`
+
+### Differences from a local run
+
+- Checks wait up to 15 seconds instead of Playwright's usual 5. GitHub's runners are in the US, and
+  the site is much slower from there: after login, the trade page took up to 5 seconds to show
+  its first symbol. GitHub sets the `CI` variable, which turns this on (`tests/conftest.py`).
+- Runs wait for each other rather than overlapping, because they all trade on the same demo account.
 
 ## Reading the results
 

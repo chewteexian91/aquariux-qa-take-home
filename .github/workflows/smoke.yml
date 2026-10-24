@@ -34,15 +34,35 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # CI (set by GitHub) makes checks wait longer: the site is slow from GitHub's US runners
+      # (tests/conftest.py).
       - name: Run the smoke tests
         env:
           AQX_ENCRYPTION_KEY: ${{ secrets.AQX_ENCRYPTION_KEY }}
         run: >-
-          docker run --rm -e AQX_ENCRYPTION_KEY
+          docker run --rm -e AQX_ENCRYPTION_KEY -e CI
           -v "$PWD/allure-results:/app/allure-results"
           aqx-tests -m smoke -rs
 
-      # Download it from the run's page, then: npx allure@3.20.1 generate allure-results
+      - uses: actions/setup-node@v7
+        if: always()
+        with:
+          node-version: 24
+
+      # One HTML file (settings in allurerc.json).
+      - name: Build the Allure report
+        if: always()
+        run: npx --yes allure@3.20.1 generate allure-results
+
+      - name: Keep the Allure report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report/index.html
+          if-no-files-found: ignore
+
+      # The raw results, to rebuild the report: npx allure@3.20.1 generate allure-results
       - name: Keep the Allure results
         if: always()
         uses: actions/upload-artifact@v4
