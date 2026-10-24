@@ -1,0 +1,13 @@
+{
+  "name": "AQX Trader UI tests",
+  "output": "allure-report",
+  "plugins": {
+    "awesome": {
+      "options": {
+        "singleFile": true,
+        "groupBy": ["feature"],
+        "reportLanguage": "en"
+      }
+    }
+  }
+}

@@ -20,6 +20,10 @@ _WATCH_PANEL_RELOAD_JS = r"""() => {
   observer.observe(document.body, {subtree: true, childList: true, characterData: true});
 }"""
 PANEL_RELOAD_TIMEOUT_MS = 10_000
+ONE_POINT_LABEL = "trade-one-point-equal-label"
+OPEN_SYMBOL = "symbol-overview-id"
+# On the One-Click tab, time for the panel to finish loading the new symbol (no loading state to watch).
+ONE_CLICK_SETTLE_MS = 1000
 
 
 class SymbolSearch:
@@ -54,7 +58,15 @@ class SymbolSearch:
     def select(self, symbol: str):
         """Open the symbol from the results, and wait until the order panel has loaded it."""
         self.result(symbol).wait_for()
+        # The One-Click tab (shown first while one-click trading is on) has no "One point equals"
+        # label to watch. There, wait for the open symbol to change instead.
+        trade_form_shown = self.page.get_by_test_id(ONE_POINT_LABEL).is_visible()
         self.page.evaluate(_WATCH_PANEL_RELOAD_JS)
         self.result(symbol).click()
-        self.page.wait_for_function("window.__orderPanelReloaded === true", timeout=PANEL_RELOAD_TIMEOUT_MS)
+        if trade_form_shown:
+            self.page.wait_for_function("window.__orderPanelReloaded === true", timeout=PANEL_RELOAD_TIMEOUT_MS)
+        else:
+            self.page.get_by_test_id(OPEN_SYMBOL).filter(has_text=re.compile(rf"^{re.escape(symbol)}$")).wait_for(
+                timeout=PANEL_RELOAD_TIMEOUT_MS)
+            self.page.wait_for_timeout(ONE_CLICK_SETTLE_MS)
         return self

@@ -7,6 +7,7 @@ Feature: Login
   Background:
     Given I am on the login page
 
+  @smoke
   Scenario: Successful login with valid credentials
     When I log in as the "normal" user
     Then I should be on the trade page

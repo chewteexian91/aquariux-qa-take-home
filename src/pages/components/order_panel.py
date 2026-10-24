@@ -1,9 +1,18 @@
-import re
+from datetime import date
 
 from playwright.sync_api import Locator, Page
 
+from src.pages.components.form_fields import choose, error_under, exact, options, selected, type_into
+
 # Title of the collapsible Trade Details section (no test id).
 TRADE_DETAILS_TITLE = "Trade Details"
+# The expiry time picker's buttons and heading (no test ids).
+TIME_PICKER_OK = "OK"
+TIME_PICKER_HOUR = "Hour"
+# What the Place button reads while the panel loads a symbol, and while that symbol's market is closed.
+# The site shows them in capitals (CSS); this is the text in the page.
+PANEL_LOADING_MSG = "Stay Tuned"
+MARKET_CLOSED_MSG = "Market Closed"
 
 # Test ids of the Trade Details rows, by the label the site shows. Each row holds a label and a value.
 TRADE_DETAILS_ROWS = {
@@ -34,7 +43,10 @@ _SNAPSHOT_JS = """(rows) => {
 
 
 class OrderPanel:
-    """Order panel on the right of the trade page, for the symbol that is open."""
+    """Order panel on the right of the trade page, for the symbol that is open.
+
+    Two tabs: Trade (the order form) and, while one-click trading is on, One-Click.
+    """
 
     def __init__(self, page: Page):
         self.page = page
@@ -42,6 +54,18 @@ class OrderPanel:
         # Tabs
         self.trade_tab = page.get_by_test_id("tab-trade")
         self.specification_tab = page.get_by_test_id("tab-specification")
+        self.one_click_tab = page.get_by_test_id("tab-one-click-trading")
+
+        # The form itself. The Edit Order dialog repeats some of its fields (Price, expiry), so
+        # those are looked up inside it.
+        self.place_order_button = page.get_by_test_id("trade-button-order")
+        self.form = self.place_order_button.locator(
+            "xpath=ancestor::*[.//*[@data-testid='trade-dropdown-order-type']][1]")
+        # While the market is closed, the Place button is disabled and reads "Market Closed". On the
+        # One-Click tab the same button takes the place of BUY / SELL. For about 0.1s after a symbol
+        # is selected it reads "Stay Tuned" instead.
+        self.panel_loading = self.place_order_button.filter(has_text=exact(PANEL_LOADING_MSG))
+        self.market_closed = self.place_order_button.filter(has_text=exact(MARKET_CLOSED_MSG))
 
         # Side and live prices
         self.buy_button = page.get_by_test_id("trade-button-order-buy")
@@ -51,14 +75,28 @@ class OrderPanel:
 
         # Order settings
         self.order_type_dropdown = page.get_by_test_id("trade-dropdown-order-type")
+        self.order_type_options = options(self.order_type_dropdown)
         self.fill_policy_dropdown = page.get_by_test_id("trade-dropdown-fill-policy")
-        # The open list sits in the dropdown's second child; its options have no test ids.
-        self.fill_policy_options = self.fill_policy_dropdown.locator("xpath=./div[2]//div[@tabindex='0']")
+        self.fill_policy_options = options(self.fill_policy_dropdown)
+        # The One-Click tab's volume box has the same test id; only one tab is shown at a time.
         self.volume_input = page.get_by_test_id("trade-input-volume")
         self.swap_to_units_button = page.get_by_test_id("trade-swap-to-units")
         self.volume_info_label = page.get_by_test_id("trade-volume-info-label")
         self.volume_info_min_value = page.get_by_test_id("trade-volume-info-min-value")
         self.one_point_equals_label = page.get_by_test_id("trade-one-point-equal-label")
+
+        # Pending orders (Limit, Stop, Stop Limit). Price inputs have no test ids.
+        self.price_input = self.form.locator("input[name='price']")
+        self.stop_limit_price_input = self.form.locator("input[name='priceTrigger']")
+        self.expiry_dropdown = self.form.get_by_test_id("trade-dropdown-expiry")
+        self.expiry_options = options(self.expiry_dropdown)
+        # Shown for Specified Date (and Time). Both start at the server's date and time.
+        self.expiry_date_box = self.form.get_by_test_id("trade-input-expiry-date")
+        self.expiry_time_box = self.form.get_by_test_id("trade-input-expiry-time")
+        # The time picker (Hour and Minute dropdowns, Clear / OK) has no test ids.
+        self.time_picker_ok = page.get_by_role("button", name=exact(TIME_PICKER_OK))
+        self.time_picker = self.time_picker_ok.locator(
+            f"xpath=ancestor::*[.//*[normalize-space(text())='{TIME_PICKER_HOUR}']][1]")
 
         # Stop loss / take profit
         self.stop_loss_price_input = page.get_by_test_id("trade-input-stoploss-price")
@@ -66,11 +104,13 @@ class OrderPanel:
         self.take_profit_price_input = page.get_by_test_id("trade-input-takeprofit-price")
         self.take_profit_points_input = page.get_by_test_id("trade-input-takeprofit-points")
 
-        # Validation messages under a field (e.g. "Minimum volume is 0.1."). No test ids: each is
-        # the element right after the input's wrapper. Empty or missing when there is no error.
-        self.volume_error = _error_under(self.volume_input)
-        self.stop_loss_price_error = _error_under(self.stop_loss_price_input)
-        self.take_profit_price_error = _error_under(self.take_profit_price_input)
+        # Validation messages under a field (e.g. "Minimum volume is 0.1."). Empty or missing when
+        # there is no error.
+        self.volume_error = error_under(self.volume_input)
+        self.price_error = error_under(self.price_input)
+        self.stop_limit_price_error = error_under(self.stop_limit_price_input)
+        self.stop_loss_price_error = error_under(self.stop_loss_price_input)
+        self.take_profit_price_error = error_under(self.take_profit_price_input)
 
         # Trade details (collapsed by default). Each row holds its label and value.
         self.trade_details = page.get_by_test_id("trade-details")
@@ -85,13 +125,19 @@ class OrderPanel:
         self.potential_gain = page.get_by_test_id("trade-details-potential-gain")
         self.risk_reward = page.get_by_test_id("trade-details-risk-reward")
 
-        # Submit ("Place Buy Order" / "Place Sell Order"). It stays enabled while a field shows an
-        # error; clicking it then just doesn't open the Order Confirmation.
-        self.place_order_button = page.get_by_test_id("trade-button-order")
+        # One-Click tab: BUY / SELL trade at once, with the volume above.
+        self.one_click_buy_button = page.get_by_test_id("trade-button-oct-order-buy")
+        self.one_click_sell_button = page.get_by_test_id("trade-button-oct-order-sell")
 
     def trade_detail_value(self, label: str) -> Locator:
         """The value of a Trade Details row, by its label (e.g. "Potential Loss")."""
         return self.page.get_by_test_id(TRADE_DETAILS_ROWS[label]).locator("xpath=./div[2]")
+
+    def expiry_calendar_day(self, day: date) -> Locator:
+        """A day in the open expiry calendar (a react-calendar). Past days are disabled buttons."""
+        label = f"{day:%B} {day.day}, {day.year}"  # "October 26, 2026"
+        return self.page.locator("button.react-calendar__tile").filter(
+            has=self.page.locator(f"abbr[aria-label='{label}']"))
 
     def choose_buy(self):
         self.buy_button.click()
@@ -102,19 +148,39 @@ class OrderPanel:
         return self
 
     def choose_order_type(self, order_type: str):
-        _choose(self.order_type_dropdown, order_type)
+        choose(self.order_type_dropdown, order_type)
+        return self
+
+    def open_order_type_list(self):
+        selected(self.order_type_dropdown).click()
         return self
 
     def choose_fill_policy(self, fill_policy: str):
-        _choose(self.fill_policy_dropdown, fill_policy)
+        choose(self.fill_policy_dropdown, fill_policy)
         return self
 
     def open_fill_policy_list(self):
-        _selected(self.fill_policy_dropdown).click()
+        selected(self.fill_policy_dropdown).click()
+        return self
+
+    def choose_expiry(self, expiry: str):
+        choose(self.expiry_dropdown, expiry)
+        return self
+
+    def open_expiry_list(self):
+        selected(self.expiry_dropdown).click()
         return self
 
     def set_volume(self, volume: str):
-        _type(self.volume_input, volume)
+        type_into(self.volume_input, volume)
+        return self
+
+    def set_price(self, price: str):
+        type_into(self.price_input, price)
+        return self
+
+    def set_stop_limit_price(self, price: str):
+        type_into(self.stop_limit_price_input, price)
         return self
 
     # A price is typed key by key and the field is then left without moving into its Points box.
@@ -122,16 +188,34 @@ class OrderPanel:
     # price with the market, so the order goes out with a different price (docs/site-notes.md).
     def set_stop_loss(self, price: str | None = None, points: str | None = None):
         if price is not None:
-            _type(self.stop_loss_price_input, price)
+            type_into(self.stop_loss_price_input, price)
         if points is not None:
-            _type(self.stop_loss_points_input, points)
+            type_into(self.stop_loss_points_input, points)
         return self
 
     def set_take_profit(self, price: str | None = None, points: str | None = None):
         if price is not None:
-            _type(self.take_profit_price_input, price)
+            type_into(self.take_profit_price_input, price)
         if points is not None:
-            _type(self.take_profit_points_input, points)
+            type_into(self.take_profit_points_input, points)
+        return self
+
+    def open_expiry_calendar(self):
+        selected(self.expiry_date_box).click()
+        return self
+
+    def pick_expiry_date(self, day: date):
+        self.open_expiry_calendar()
+        self.expiry_calendar_day(day).click()
+        return self
+
+    def set_expiry_hour(self, hour: str):
+        """Pick the hour ("00" to "23") in the expiry time picker and press OK."""
+        selected(self.expiry_time_box).click()
+        selected(self.time_picker).click()  # the Hour dropdown
+        # The hour list opens outside the picker; its options are the only visible "00"…"23" texts.
+        self.page.get_by_text(exact(hour)).filter(visible=True).last.click()
+        self.time_picker_ok.click()
         return self
 
     def open_trade_details(self):
@@ -143,32 +227,22 @@ class OrderPanel:
         self.place_order_button.click()
         return self
 
+    def open_one_click_tab(self):
+        self.one_click_tab.click()
+        return self
+
+    def open_trade_tab(self):
+        self.trade_tab.click()
+        return self
+
+    def buy_with_one_click(self):
+        self.one_click_buy_button.click()
+        return self
+
+    def sell_with_one_click(self):
+        self.one_click_sell_button.click()
+        return self
+
     def snapshot(self) -> dict:
         """Live prices, SL/TP inputs and Trade Details values (as shown), all read at the same moment."""
         return self.page.evaluate(_SNAPSHOT_JS, TRADE_DETAILS_ROWS)
-
-
-def _type(box: Locator, value: str):
-    box.clear()
-    box.press_sequentially(value)
-    # Leaving the field makes the site format and check the value. Blur rather than Tab: Tab from
-    # a price moves into its Points box, and the price then follows the market.
-    box.blur()
-
-
-def _error_under(box: Locator) -> Locator:
-    return box.locator("xpath=../following-sibling::div[1]")
-
-
-def _selected(dropdown: Locator) -> Locator:
-    # The first focusable element is the box showing the selected value. The options come after it.
-    return dropdown.locator("[tabindex='0']").first
-
-
-def _choose(dropdown: Locator, option: str):
-    # The open list also contains the selected value, so leave it alone if it's already chosen.
-    if _selected(dropdown).inner_text().strip() == option:
-        return
-    _selected(dropdown).click()
-    dropdown.locator("xpath=./div[2]//div[@tabindex='0']").filter(
-        has_text=re.compile(rf"^{re.escape(option)}$")).click()

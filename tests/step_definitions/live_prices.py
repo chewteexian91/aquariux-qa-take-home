@@ -67,3 +67,16 @@ def live_check(trade_page: TradePage, mismatch):
         if time.monotonic() > deadline:
             raise AssertionError(problem)
         trade_page.page.wait_for_timeout(200)
+
+
+def steady_snapshot(trade_page: TradePage) -> dict:
+    """A snapshot with the prices and point size filled in. While the panel reloads (after login or
+    a symbol change) they read empty or 0 for a moment."""
+    deadline = time.monotonic() + LIVE_CHECK_SECONDS
+    while True:
+        snap = trade_page.order_panel.snapshot()
+        if number(snap["buy"]) and number(snap["sell"]) and number(snap["point"].split(":")[-1]):
+            return snap
+        if time.monotonic() > deadline:
+            raise AssertionError(f"The order panel shows no live prices: {snap}")
+        trade_page.page.wait_for_timeout(200)

@@ -1,8 +1,10 @@
-"""Steps for the order panel: filling in an order, its validation, and the Trade Details."""
+"""Steps for the order panel: market and pending orders, the One-Click tab, validation, Trade Details."""
 import re
+from datetime import datetime, timedelta
 from decimal import Decimal
 
-from playwright.sync_api import expect
+import pytest
+from playwright.sync_api import Request, expect
 from pytest_bdd import parsers, then, when
 
 from src.models.Order import Order
@@ -11,6 +13,12 @@ from src.pages.trade_page import TradePage
 from tests.step_definitions.live_prices import (BUY, PRICE_LAG_POINTS, SELL, STOP_LOSS, TAKE_PROFIT,
                                                 entry_price, goes_above, live_check, number, point,
                                                 price_from_points)
+from tests.step_definitions.orders import is_new_order, record_placed_order, server_today
+
+PRICE, STOP_LIMIT_PRICE, VOLUME = "Price", "Stop Limit Price", "Volume"
+SPECIFIED_DATE, SPECIFIED_DATE_AND_TIME, GOOD_TILL_DAY = "Specified Date", "Specified Date and Time", "Good Till Day"
+# After a click that should send nothing, how long to watch for an order request.
+NO_REQUEST_WAIT_MS = 1500
 
 # Units in one lot, from the symbol's Specification tab ("Contract Size").
 CONTRACT_SIZE = {"UKOIL": Decimal(1000)}
@@ -20,6 +28,8 @@ LEVERAGE = Decimal(100)
 CENT = Decimal("0.01")
 # After Place is clicked, the Order Confirmation normally opens well within this.
 CONFIRMATION_WAIT_MS = 1500
+# The order panel's open tab has the class "selected".
+SELECTED_TAB = re.compile(r"\bselected\b")
 
 
 @when(parsers.parse('I fill in a "{side}" market order for "{volume}" lots with "{fill_policy}"'),
@@ -87,12 +97,204 @@ def place_order(trade_page: TradePage):
     trade_page.order_panel.place_order()
 
 
+@when("I place the order with one-click trading on")
+def place_order_one_click_on(trade_page: TradePage, order: Order, open_orders: list[Order]):
+    # With one-click trading on, Place sends the order itself: no confirmation to confirm.
+    with trade_page.page.expect_response(is_new_order) as answer:
+        trade_page.order_panel.place_order()
+    record_placed_order(answer.value, order, open_orders)
+
+
+# --- Pending orders ---
+
+@when(parsers.parse('I fill in a "{side}" "{order_type}" order for "{volume}" lots priced "{distance}" from the market'),
+      target_fixture="order")
+def fill_in_pending_order(trade_page: TradePage, side: str, order_type: str, volume: str, distance: str) -> Order:
+    panel = trade_page.order_panel
+    _choose_side(panel, side)
+    panel.choose_order_type(order_type).set_volume(volume)
+    price = _price_from_market(panel, side, distance)
+    panel.set_price(price)
+    return Order(symbol=trade_page.open_symbol.inner_text().strip(), side=side, volume=volume, order_type=order_type,
+                 price=price, fill_policy="Return", expiry="Good Till Canceled")
+
+
+@when("I clear the price")
+def clear_price(trade_page: TradePage):
+    trade_page.order_panel.set_price("")
+
+
+@when(parsers.parse('I set the Stop Limit Price "{distance}" from the market'))
+def set_stop_limit_price(trade_page: TradePage, order: Order, distance: str):
+    order.stop_limit_price = _price_from_market(trade_page.order_panel, order.side, distance)
+    trade_page.order_panel.set_stop_limit_price(order.stop_limit_price)
+
+
+@when(parsers.parse('I choose a "{order_type}" order'))
+def choose_order_type(trade_page: TradePage, order_type: str):
+    trade_page.order_panel.choose_order_type(order_type)
+
+
+@when(parsers.parse('I choose the expiry "{expiry}"'))
+def choose_expiry(trade_page: TradePage, order: Order, expiry: str):
+    panel = trade_page.order_panel
+    panel.choose_expiry(expiry)
+    order.expiry = expiry
+    if expiry == GOOD_TILL_DAY:
+        order.expiry_date = server_today(trade_page).isoformat()
+    elif expiry in (SPECIFIED_DATE, SPECIFIED_DATE_AND_TIME):
+        order.expiry_date = _expiry_shown(panel, expiry)
+
+
+@when(parsers.parse('I pick an expiry date {days:d} days ahead'))
+def pick_expiry_date(trade_page: TradePage, order: Order, days: int):
+    panel = trade_page.order_panel
+    # The box starts at the server's date.
+    today = datetime.strptime(panel.expiry_date_box.inner_text().strip(), "%Y-%m-%d").date()
+    day = today + timedelta(days=days)
+    panel.pick_expiry_date(day)
+    expect(panel.expiry_date_box).to_have_text(day.isoformat())
+    order.expiry_date = _expiry_shown(panel, order.expiry)
+
+
+@when("I set the expiry hour to one that has already passed today")
+def set_past_expiry_hour(trade_page: TradePage):
+    panel = trade_page.order_panel
+    hour = int(panel.expiry_time_box.inner_text().strip().split(":")[0]) - 1
+    if hour < 0:
+        pytest.skip("It's just after midnight on the server's clock: no hour has passed yet today")
+    panel.set_expiry_hour(f"{hour:02d}")
+    expect(panel.expiry_time_box).to_have_text(re.compile(rf"^{hour:02d}:"))
+
+
+@when(parsers.parse('I set the "{field}" price "{distance}" on the wrong side of my order\'s price'))
+def price_on_wrong_side_of_order_price(trade_page: TradePage, order: Order, field: str, distance: str):
+    price, fraction = Decimal(order.price), _fraction(distance)
+    # A Buy's Stop Loss belongs below its price and its Take Profit above; this puts it the other way.
+    above = not goes_above(order.side, field)
+    wrong = (price * (1 + fraction if above else 1 - fraction)).quantize(price)  # same decimals as the price
+    _set_price(trade_page.order_panel, field, str(wrong))
+
+
+@when("I open the order type list")
+def open_order_type_list(trade_page: TradePage):
+    trade_page.order_panel.open_order_type_list()
+
+
+@then(parsers.parse('the order types offered should be "{order_types}"'))
+def order_types_offered(trade_page: TradePage, order_types: str):
+    expect(trade_page.order_panel.order_type_options).to_have_text(order_types.split(", "))
+
+
+@when("I open the expiry list")
+def open_expiry_list(trade_page: TradePage):
+    trade_page.order_panel.open_expiry_list()
+
+
+@then(parsers.parse('the expiry options offered should be "{expiries}"'))
+def expiries_offered(trade_page: TradePage, expiries: str):
+    expect(trade_page.order_panel.expiry_options).to_have_text(expiries.split(", "))
+
+
+@when("I open the expiry calendar")
+def open_expiry_calendar(trade_page: TradePage):
+    trade_page.order_panel.open_expiry_calendar()
+
+
+@then("only days from tomorrow should be selectable as the expiry date")
+def only_from_tomorrow_selectable(trade_page: TradePage):
+    panel = trade_page.order_panel
+    # The box starts at today's date on the server's clock.
+    today = datetime.strptime(panel.expiry_date_box.inner_text().strip(), "%Y-%m-%d").date()
+    expect(panel.expiry_calendar_day(today + timedelta(days=1))).to_be_enabled()
+    expect(panel.expiry_calendar_day(today)).to_be_disabled()
+
+
+# --- One-Click tab ---
+
+@when("I open the One-Click tab")
+def open_one_click_tab(trade_page: TradePage):
+    trade_page.order_panel.open_one_click_tab()
+    expect(trade_page.order_panel.one_click_buy_button).to_be_visible()
+
+
+@when("I open the Trade tab")
+def open_trade_tab(trade_page: TradePage):
+    trade_page.order_panel.open_trade_tab()
+    expect(trade_page.order_panel.place_order_button).to_be_visible()
+
+
+@when(parsers.parse('I place a "{side}" order for "{volume}" lots with one click'), target_fixture="order")
+def one_click_order(trade_page: TradePage, open_orders: list[Order], side: str, volume: str) -> Order:
+    panel = trade_page.order_panel
+    panel.set_volume(volume)
+    button = panel.one_click_buy_button if side == BUY else panel.one_click_sell_button
+    with trade_page.page.expect_response(is_new_order) as answer:
+        button.click()
+    order = Order(symbol=trade_page.open_symbol.inner_text().strip(), side=side, volume=volume)
+    record_placed_order(answer.value, order, open_orders)
+    return order
+
+
+# parsers.re (not parse) so an empty volume still matches.
+@when(parsers.re(r'I enter "(?P<volume>[^"]*)" lots on the One-Click tab'))
+def enter_one_click_volume(trade_page: TradePage, volume: str):
+    trade_page.order_panel.set_volume(volume)
+
+
+@when("I try to buy with one click")
+def try_one_click_buy(trade_page: TradePage, order_requests: list[Request]):
+    trade_page.order_panel.buy_with_one_click()
+
+
+@then("no order should have been sent")
+def no_order_sent(trade_page: TradePage, order_requests: list[Request]):
+    trade_page.page.wait_for_timeout(NO_REQUEST_WAIT_MS)
+    assert not order_requests, f"An order was sent: {[r.post_data for r in order_requests]}"
+
+
+@then("no order confirmation should have opened")
+def no_confirmation(trade_page: TradePage):
+    expect(trade_page.order_confirmation.confirm_button).to_be_hidden()
+
+
+@then(parsers.parse('the volume should read "{volume}"'))
+def volume_reads(trade_page: TradePage, volume: str):
+    expect(trade_page.order_panel.volume_input).to_have_value(volume)
+
+
+@then(parsers.parse('I should not see a "{field}" error'))
+def no_field_error(trade_page: TradePage, field: str):
+    expect(_error_of(trade_page.order_panel, field).filter(has_text=re.compile(r"\S"))).to_have_count(0)
+
+
 @then("I should not be able to place the order")
 def cannot_place_order(trade_page: TradePage):
     # Place stays enabled while a field shows an error. Clicking it should open nothing.
     trade_page.order_panel.place_order()
     trade_page.page.wait_for_timeout(CONFIRMATION_WAIT_MS)
     expect(trade_page.order_confirmation.confirm_button).to_be_hidden()
+
+
+# --- Market closed ---
+
+@then("the order panel should say the market is closed")
+def panel_says_market_closed(trade_page: TradePage):
+    expect(trade_page.order_panel.market_closed).to_be_visible()
+
+
+@then("the Place button should be disabled")
+def place_button_disabled(trade_page: TradePage):
+    expect(trade_page.order_panel.place_order_button).to_be_disabled()
+
+
+@then("I should not be able to buy or sell with one click")
+def no_one_click_buy_or_sell(trade_page: TradePage):
+    panel = trade_page.order_panel
+    # On the One-Click tab, or BUY / SELL would be missing only because the Trade tab is showing.
+    expect(panel.one_click_tab).to_have_class(SELECTED_TAB)
+    expect(panel.one_click_buy_button).to_have_count(0)
+    expect(panel.one_click_sell_button).to_have_count(0)
 
 
 @then(parsers.parse('I should see the "{field}" error "{error}"'))
@@ -219,9 +421,25 @@ def _set_points_away(panel: OrderPanel, side: str, field: str, fraction: Decimal
 
 
 def _error_of(panel: OrderPanel, field: str):
-    errors = {"Volume": panel.volume_error, STOP_LOSS: panel.stop_loss_price_error,
-              TAKE_PROFIT: panel.take_profit_price_error}
+    errors = {VOLUME: panel.volume_error, STOP_LOSS: panel.stop_loss_price_error,
+              TAKE_PROFIT: panel.take_profit_price_error, PRICE: panel.price_error,
+              STOP_LIMIT_PRICE: panel.stop_limit_price_error}
     return errors[field]
+
+
+def _price_from_market(panel: OrderPanel, side: str, distance: str) -> str:
+    """A price `distance` ("-20%", "+19%") away from the side's market price, to the symbol's point."""
+    snap = panel.snapshot()
+    fraction = Decimal(distance.rstrip("%")) / 100
+    return str((entry_price(snap, side) * (1 + fraction)).quantize(point(snap)))
+
+
+def _expiry_shown(panel: OrderPanel, expiry: str) -> str:
+    """The expiry date as the Pending Orders table will show it: "2026-10-26" or "2026-10-27 18:43:00"."""
+    day = panel.expiry_date_box.inner_text().strip()
+    if expiry == SPECIFIED_DATE_AND_TIME:
+        return f"{day} {panel.expiry_time_box.inner_text().strip()}:00"
+    return day
 
 
 def _fraction(distance: str) -> Decimal:

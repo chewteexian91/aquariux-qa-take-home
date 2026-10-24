@@ -8,7 +8,8 @@ Feature: Market orders with Stop Loss and Take Profit
   # "from the market" = on the correct side: a Buy has its Stop Loss below and Take Profit above
   # the price, a Sell the reverse. They sit 20-30% away so they never trigger while a test runs.
   # Failed order requests are faked in the browser: they never reach the server.
-  # @known_bug scenarios check what the site should do. They are expected to fail until it's fixed.
+  # @defect scenarios check what the site should do. They are expected to fail until it's fixed.
+  # Steps to reproduce each defect by hand: docs/defects.md.
 
   Background:
     Given one-click trading is off
@@ -27,9 +28,13 @@ Feature: Market orders with Stop Loss and Take Profit
     Then I should see the message "Position has been created."
     And my position should be listed in Open Positions as ordered
 
+    @smoke
     Examples:
       | symbol | side | volume | fill_policy         |
       | UKOIL  | Buy  | 0.1    | Fill or Kill        |
+
+    Examples:
+      | symbol | side | volume | fill_policy         |
       | UKOIL  | Sell | 0.1    | Fill or Kill        |
       | UKOIL  | Buy  | 0.1    | Immediate or Cancel |
       | UKOIL  | Sell | 0.1    | Immediate or Cancel |
@@ -92,9 +97,9 @@ Feature: Market orders with Stop Loss and Take Profit
       | UKOIL  | Fill or Kill, Immediate or Cancel |
       | EURUSD | Fill or Kill                      |
 
-  # Known bug: USDSGD orders are rejected with "Insufficient balance". The site works out a margin
+  # Defect #4: USDSGD orders are rejected with "Insufficient balance". The site works out a margin
   # of 1,277,800.00 USD for 0.01 lot (1,000 USD), more than the account holds. At 1:100 it is 10.00.
-  @known_bug
+  @defect
   Scenario: A USDSGD market order goes through
     Given "USDSGD" is open for trading
     When I fill in a "Buy" market order for "0.01" lots with "Fill or Kill"
@@ -142,10 +147,10 @@ Feature: Market orders with Stop Loss and Take Profit
       | Sell | Stop Loss   | Stop Loss must be greater than Buy Price.    |
       | Buy  | Take Profit | Take Profit must be greater than Sell Price. |
 
-  # Known bug: a price of 0 means "no Stop Loss / Take Profit". The site accepts it here, shows
+  # Defect #1: a price of 0 means "no Stop Loss / Take Profit". The site accepts it here, shows
   # "0.000" in the confirmation and opens the position with no Stop Loss / Take Profit ("--"),
   # without telling the user.
-  @known_bug
+  @defect
   Scenario Outline: A <side> order rejects a <field> price of <price>, which becomes 0.000
     Given "UKOIL" is open for trading
     When I fill in a "<side>" market order for "0.1" lots with "Fill or Kill"
@@ -189,9 +194,9 @@ Feature: Market orders with Stop Loss and Take Profit
     And the Trade Details should show "Potential Gain" "0.00"
     And the Trade Details should show "Risk:Reward" ""
 
-  # Known bug: 0.01 lot of USDSGD is 1,000 USD (the base currency). The site shows the SGD value
+  # Defects #4 and #5: 0.01 lot of USDSGD is 1,000 USD (the base currency). The site shows the SGD value
   # (about 1,277.80) under "Trade Details (USD)", and a margin of 1,277,800.00.
-  @known_bug
+  @defect
   Scenario Outline: USDSGD Trade Details show the <detail> in USD
     Given "USDSGD" is open for trading
     When I fill in a "Buy" market order for "0.01" lots with "Fill or Kill"
@@ -232,9 +237,9 @@ Feature: Market orders with Stop Loss and Take Profit
       | blocked request | Network error. Please try again later. |
       | timeout         | Network error. Please try again later. |
 
-  # Known bug: a gateway's 502/503 page shows the raw request path to the user
+  # Defect #6: a gateway's 502/503 page shows the raw request path to the user
   # ("/api/trade/trade/v1/market POST (503 - Service Unavailable)").
-  @known_bug
+  @defect
   Scenario Outline: An order request that fails with a <failure> tells the user
     Given "UKOIL" is open for trading
     When I fill in a "Buy" market order for "0.1" lots with "Fill or Kill"
